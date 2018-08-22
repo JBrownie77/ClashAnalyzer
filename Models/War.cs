@@ -1,4 +1,4 @@
-﻿using System;
+﻿using System.Collections.Generic;
 
 namespace ClashAnalyzer.Models
 {
@@ -6,6 +6,6 @@ namespace ClashAnalyzer.Models
     {
         public int SeasonId { get; set; }
         public string CreatedDate { get; set; }
-        public WarParticipant Participants { get; set; }
+        public List<WarParticipant> Participants { get; set; }
     }
 }

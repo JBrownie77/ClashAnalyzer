@@ -8,22 +8,23 @@ namespace ClashAnalyzer
     public static class ClashAnalyzer
     {
         [FunctionName("ClashAnalyzer")]
-        public static async Task Run([TimerTrigger("*/30 * * * * *")]TimerInfo myTimer, TraceWriter log, ExecutionContext context)
+        public static async Task Run([TimerTrigger("0 0 10 * * *")]TimerInfo myTimer, TraceWriter log, ExecutionContext context)
         {
             // Set up the HTTP client.
             var client = new HttpClient();
             Helper.InitHttpClient(context, ref client);
 
-            // Get the list of players in the clan.
-            var players = await ApiHelper.GetClanPlayers(log, client);
+            // Get the list of players in the clan and check their card levels.
+            var currentPlayers = await ApiHelper.GetClanPlayers(log, client);
+            Helper.CheckLevels(currentPlayers);
 
-            // Check card levels for each player.
-            Helper.CheckCardLevels(players);
+            // Get the war log and check player stats.
+            var warLog = await ApiHelper.GetClanWarlog(log, client);
+            Helper.CheckWarResults(warLog, currentPlayers);
 
-            var data = FlagHelper.ToOutput();
-            log.Info($"result!\n\n{data}");
-
-            // await GetClanWarlog(log, client);
+            // Get the results and email them.
+            var results = FlagHelper.ToResults();
+            await Helper.EmailResults(results);
 
             // Dispose the HTTP client.
             client.Dispose();

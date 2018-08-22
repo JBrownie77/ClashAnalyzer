@@ -19,18 +19,20 @@ namespace ClashAnalyzer
             }
         }
 
-        public static string ToOutput()
+        public static string ToResults()
         {
             var sb = new StringBuilder();
 
             foreach (var name in flaggedPlayers.Keys)
             {
-                sb.AppendLine($"Flagged {name} for:");
+                sb.AppendLine($"{name}:");
 
                 foreach (var reason in flaggedPlayers[name])
                 {
                     sb.AppendLine($"    - {reason}");
                 }
+
+                sb.AppendLine();
             }
 
             return sb.ToString();
