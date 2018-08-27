@@ -8,7 +8,7 @@ namespace ClashAnalyzer
     public static class ClashAnalyzer
     {
         [FunctionName("ClashAnalyzer")]
-        public static async Task Run([TimerTrigger("0 0 10 * * *")]TimerInfo myTimer, TraceWriter log, ExecutionContext context)
+        public static async Task Run([TimerTrigger("0 0 8 * * *")]TimerInfo myTimer, TraceWriter log, ExecutionContext context)
         {
             // Set up the HTTP client.
             var client = new HttpClient();
