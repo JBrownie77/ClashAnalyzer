@@ -171,7 +171,7 @@ namespace ClashAnalyzer
             }
 
             var from = "clashanalyzer@clashanalyzer.com";
-            var to = new List<string>() { "jbrownie77@gmail.com", "jcbspb@hotmail.com" };
+            var to = new List<string>() { "jbrownie77@gmail.com", "jcbspb@hotmail.com", "lyneshenry@gmail.com" };
             var subject = "American Apex Update";
 
             var emailClient = new SendGridEmailClient(apiToken);
