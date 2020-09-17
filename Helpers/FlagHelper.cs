@@ -22,6 +22,7 @@ namespace ClashAnalyzer
         public static string ToResults()
         {
             var sb = new StringBuilder();
+            sb.AppendLine("--- Flagged Players ---");
 
             foreach (var name in flaggedPlayers.Keys)
             {

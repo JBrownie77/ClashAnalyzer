@@ -1,7 +1,10 @@
-
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 15
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ClashAnalyzer", "ClashAnalyzer.csproj", "{22A36682-AC51-49E5-9969-BC53BEA3FE2C}"
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.30308.118
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ClashAnalyzer", "ClashAnalyzer.csproj", "{22A36682-AC51-49E5-9969-BC53BEA3FE2C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ClashAnalyzerLauncher", "..\ClashAnalyzerLauncher\ClashAnalyzerLauncher.csproj", "{08947FDD-63FC-4D5F-86A5-438D5C1F29BC}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -13,5 +16,15 @@ Global
 		{22A36682-AC51-49E5-9969-BC53BEA3FE2C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{22A36682-AC51-49E5-9969-BC53BEA3FE2C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{22A36682-AC51-49E5-9969-BC53BEA3FE2C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{08947FDD-63FC-4D5F-86A5-438D5C1F29BC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{08947FDD-63FC-4D5F-86A5-438D5C1F29BC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{08947FDD-63FC-4D5F-86A5-438D5C1F29BC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{08947FDD-63FC-4D5F-86A5-438D5C1F29BC}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {C0B63229-8DC9-4414-8334-EB1EEF7FB907}
 	EndGlobalSection
 EndGlobal

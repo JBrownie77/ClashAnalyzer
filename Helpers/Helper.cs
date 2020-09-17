@@ -6,8 +6,6 @@ using System.Net.Http.Headers;
 using System.Threading.Tasks;
 using ClashAnalyzer.Email;
 using ClashAnalyzer.Models;
-using Microsoft.Azure.WebJobs;
-using Microsoft.Extensions.Configuration;
 
 namespace ClashAnalyzer
 {
@@ -17,164 +15,154 @@ namespace ClashAnalyzer
         public const string CLASH_API_KEY_NAME = "CLASH_API_KEY";
         public const string SEND_GRID_API_KEY_NAME = "SEND_GRID_API_KEY";
 
-        const int WAR_KING_LEVEL = 11;
-        static IConfigurationRoot config;
+        public static HttpClient HttpClient { get; set; }
 
-        public static void InitHttpClient(ExecutionContext context, ref HttpClient client)
+        static string ApiToken { get; set; }
+        static string SendGridToken { get; set; }
+
+        public static void Init(string apiToken, string sendGridToken)
         {
-            // Set up app settings access.
-            config = new ConfigurationBuilder()
-                .SetBasePath(context.FunctionAppDirectory)
-                .AddJsonFile("local.settings.json", optional: true, reloadOnChange: true)
-                .AddEnvironmentVariables()
-                .Build();
+            ApiToken = apiToken;
+            SendGridToken = sendGridToken;
 
-            // Make sure the API token is available.
-            var apiToken = config[Helper.CLASH_API_KEY_NAME];
             if (string.IsNullOrEmpty(apiToken))
             {
-                Helper.Fail($"Missing {Helper.CLASH_API_KEY_NAME}");
+                Fail($"Missing {CLASH_API_KEY_NAME}");
             }
 
-            // Set up the client.
-            client.BaseAddress = new Uri(Helper.CLASH_API);
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
+            HttpClient = new HttpClient();
+            HttpClient.BaseAddress = new Uri(CLASH_API);
+            HttpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", ApiToken);
         }
 
-        public static void CheckLevels(List<PlayerDetail> players)
+        public static void Dispose()
         {
-            foreach (var player in players)
-            {
-                CheckKingLevel(player);
-                CheckCardLevels(player);
-            }
+            HttpClient.Dispose();
         }
 
-        public static void CheckKingLevel(PlayerDetail player)
+        public static async Task<string> GetRiverRaceStats(List<ClanMember> currentPlayers)
         {
-            if (player.ExpLevel < WAR_KING_LEVEL)
-            {
-                FlagHelper.FlagPlayer(player.Name, $"King only level {player.ExpLevel}");
-            }
-        }
+            var riverRaceLog = await ApiHelper.GetRiverRaceLog(HttpClient);
+            var currentRiverRace = await ApiHelper.GetCurrentRiverRace(HttpClient);
 
-        public static void CheckCardLevels(PlayerDetail player)
-        {
-            var totalLevels = 0;
-            var completedLevels = 0;
+            // Use player tag to uniquely identify.
+            var pointsAccumulated = new Dictionary<string, int>();
+            var racesParticipated = new Dictionary<string, int>();
+            var racesMissed = new Dictionary<string, int>();
 
-            foreach (var card in player.Cards)
+            var allResults = riverRaceLog.Items.SelectMany(i => i.Standings.Where(s => s.Clan.Tag == ApiHelper.CLAN_TAG)).ToList();
+
+            // Include the current race if we have already finished it.
+            if (!string.IsNullOrEmpty(currentRiverRace.Clan.FinishTime))
             {
-                // Max level is considered relative to the war league's max level.
-                totalLevels += MapWarCardLevel(card.MaxLevel);
-                completedLevels += card.Level;
+                allResults.Add(currentRiverRace);
             }
 
-            var percent = completedLevels * 100 / totalLevels;
-            if (percent < 60)
+            // Accumulate stats across past races.
+            foreach (var raceResult in allResults)
             {
-                FlagHelper.FlagPlayer(player.Name, $"Cards only {percent}% leveled");
-            }
-        }
-
-        public static void CheckWarResults(WarLog warLog, List<PlayerDetail> currentPlayers)
-        {
-            var warParticipants = new Dictionary<string, PlayerWarStats>(); 
-
-            // Iterate wars and track participant stats.
-            foreach (var war in warLog.Items)
-            {
-                foreach (var participant in war.Participants)
+                foreach (var participant in raceResult.Clan.Participants)
                 {
-                    // Only look at players currently in the clan.
+                    // Skip if they aren't still in the clan.
                     if (!currentPlayers.Any(p => p.Tag == participant.Tag))
-                    {
                         continue;
-                    }
 
-                    if (warParticipants.TryGetValue(participant.Name, out PlayerWarStats stats))
+                    var points = participant.Fame + participant.RepairPoints;
+
+                    // Track total points gained.
+                    if (pointsAccumulated.ContainsKey(participant.Tag))
                     {
-                        // Accumulate war stats if this player has already been seen.
-                        stats.WarsParticipated++;
-                        stats.WarDayBattles += participant.BattlesPlayed;
-                        stats.WarDayWins += participant.Wins;
-                        stats.CardsEarned += participant.CardsEarned;
-                        stats.LossStreak = (participant.Wins < participant.BattlesPlayed) ?
-                            (stats.LossStreak + 1) : 0;
-                        stats.LongestLossStreak = Math.Max(stats.LossStreak, stats.LongestLossStreak);
+                        pointsAccumulated[participant.Tag] += points;
                     }
                     else
                     {
-                        var lossStreak = (participant.Wins < participant.BattlesPlayed) ? 1 : 0;
+                        pointsAccumulated[participant.Tag] = points;
+                    }
 
-                        // Create a new entry if this player hasn't already been seen.
-                        warParticipants[participant.Name] = new PlayerWarStats()
+                    // Track number of races participated (for averaging points).
+                    if (racesParticipated.ContainsKey(participant.Tag))
+                    {
+                        racesParticipated[participant.Tag]++;
+                    }
+                    else
+                    {
+                        racesParticipated[participant.Tag] = 1;
+                    }
+
+                    // Track inactive races.
+                    if (points == 0)
+                    {
+                        if (racesMissed.ContainsKey(participant.Tag))
                         {
-                            WarsParticipated = 1,
-                            WarDayBattles = participant.BattlesPlayed,
-                            WarDayWins = participant.Wins,
-                            CardsEarned = participant.CardsEarned,
-                            LossStreak = lossStreak,
-                            LongestLossStreak = lossStreak
-                        };
+                            racesMissed[participant.Tag]++;
+                        }
+                        else
+                        {
+                            racesMissed[participant.Tag] = 1;
+                        }
                     }
                 }
             }
 
-            // Flag players that have subpar stats.
-            foreach (var name in warParticipants.Keys)
+            // Flag any players that missed races.
+            foreach (var kvp in racesMissed)
             {
-                var stats = warParticipants[name];
-                var winRate = (stats.WarDayBattles == 0) ? 0 : stats.WarDayWins * 100 / stats.WarDayBattles;
-
-                if (winRate < 50)
+                var player = currentPlayers.FirstOrDefault(predicate => predicate.Tag == kvp.Key);
+                if (player != null)
                 {
-                    FlagHelper.FlagPlayer(name, $"Win rate of {winRate}% ({stats.WarDayWins}/{stats.WarDayBattles}) in last {warLog.Items.Count} wars");
-                }
-
-                if (stats.LongestLossStreak >= 3)
-                {
-                    FlagHelper.FlagPlayer(name, $"Loss streak of {stats.LongestLossStreak} in last {warLog.Items.Count} wars");
+                    FlagHelper.FlagPlayer(player.Name, $"Didn't participate in {kvp.Value} of {allResults.Count} recent river races");
                 }
             }
 
-            // Sort by collection day cards earned.
-            var participantsByCollection = warParticipants
-                .OrderBy(p => p.Value.CardsEarned)
-                .ToList();
+            // Create the results.
+            string result = $"--- Avg Points in Last {allResults.Count} River Races ---\n";
 
-            // Flag anyone who has below 50% of the average of the best collector.
-            var bestCollector = participantsByCollection.Last();
-            var bestCollectionRate = (double)bestCollector.Value.CardsEarned / bestCollector.Value.WarsParticipated;
-            bestCollectionRate = Math.Round(bestCollectionRate, 0);
-
-            foreach (var participant in participantsByCollection)
-            {
-                var collectionRate = (double)participant.Value.CardsEarned / participant.Value.WarsParticipated;
-                collectionRate = Math.Round(collectionRate, 0);
-
-                var rate = collectionRate * 100 / bestCollectionRate;
-
-                if (rate < 50)
+            var sortedByAveragePoints = pointsAccumulated.Select(kvp => new
                 {
-                    FlagHelper.FlagPlayer(participant.Key, $"Only {collectionRate} collection cards averaged in last {warLog.Items.Count} wars");
+                    Tag = kvp.Key,
+                    Total = kvp.Value,
+                    Average = (float)kvp.Value / racesParticipated[kvp.Key]
+                })
+                .OrderByDescending(i => i.Average).ToList();
+
+            foreach (var kvp in sortedByAveragePoints)
+            {
+                var player = currentPlayers.FirstOrDefault(predicate => predicate.Tag == kvp.Tag);
+                if (player != null)
+                {
+                    result += $"{player.Name}: {kvp.Average:0.00} ({kvp.Total} / {racesParticipated[kvp.Tag]})\n";
+                }
+            }
+
+            return result;
+        }
+
+        public static void CheckInactives(List<ClanMember> currentPlayers)
+        {
+            foreach (var player in currentPlayers)
+            {
+                var lastSeen = DateTime.Parse(StandardizeDateTime(player.LastSeen));
+                var numDays = DateTime.UtcNow.Subtract(lastSeen).Days;
+
+                if (numDays > 3)
+                {
+                    FlagHelper.FlagPlayer(player.Name, $"Inactive for {numDays} days");
                 }
             }
         }
 
         public static async Task EmailResults(string results)
         {
-            var apiToken = config[Helper.SEND_GRID_API_KEY_NAME];
-            if (string.IsNullOrEmpty(apiToken))
+            if (string.IsNullOrEmpty(SendGridToken))
             {
-                Helper.Fail($"Missing {Helper.SEND_GRID_API_KEY_NAME}");
+                Fail($"Missing {SEND_GRID_API_KEY_NAME}");
             }
 
             var from = "clashanalyzer@clashanalyzer.com";
-            var to = new List<string>() { "jbrownie77@gmail.com", "jcbspb@hotmail.com", "lyneshenry@gmail.com" };
+            var to = new List<string>() { "jbrownie77@gmail.com", "jcbspb@hotmail.com" };
             var subject = "American Apex Update";
 
-            var emailClient = new SendGridEmailClient(apiToken);
+            var emailClient = new SendGridEmailClient(SendGridToken);
             bool success = await emailClient.SendEmailAsync(from, to, subject, results, isHtml: false);
 
             if (!success)
@@ -188,17 +176,18 @@ namespace ClashAnalyzer
             throw new Exception(errorMessage);
         }
 
-        private static int MapWarCardLevel(int maxLevel)
+        static string StandardizeDateTime(string dateTime)
         {
-            // Max level is considered relative to the war league's max level.
-            switch (maxLevel)
-            {
-                case 13: return 11;
-                case 11: return 9;
-                case 8: return 6;
-                case 5: return 3;
-                default: Fail($"Unknown max card level: {maxLevel}"); return maxLevel;
-            }
+            // DateTime comes in format 20200901T181021.000Z
+            // DateTime.Parse expects 2020-09-01T18:10:21.000Z
+            dateTime = dateTime.Insert(4, "-");
+            dateTime = dateTime.Insert(7, "-");
+
+            var indexOfT = dateTime.IndexOf("T");
+            dateTime = dateTime.Insert(indexOfT + 3, ":");
+            dateTime = dateTime.Insert(indexOfT + 6, ":");
+
+            return dateTime;
         }
     }
 }
